@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Shooter</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #0a0a1a;
+  font-family: 'Orbitron', sans-serif;
+  color: #fff;
+  overflow: hidden;
+}
+
+#game-container { text-align: center; }
+
+canvas {
+  background-color: #000;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(0,255,255,0.5);
+  display: block;
+}
+
+h1 {
+  color: #00ffff;
+  text-shadow: 0 0 10px #00ffff;
+}
+</style>
+</head>
+
+<body>
+<div id="game-container">
+<h1>Space Shooter</h1>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const collisionSound = new Tone.Synth({
+  oscillator: { type: "fmsquare" },
+  envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.1 }
+}).toDestination();
+
+const assets = {
+  player: new Image(),
+  bullet: new Image(),
+  asteroid: new Image(),
+  chaser: new Image(),
+  dodger: new Image(),
+  shieldPowerUp: new Image(),
+  fuelPowerUp: new Image(),
+};
+
+assets.player.src = "https://placehold.co/64x64/00ffff/000000?text=P";
+assets.bullet.src = "https://placehold.co/16x16/ffff00/000000?text=!";
+assets.asteroid.src = "https://placehold.co/64x64/ff0000/ffffff?text=A";
+assets.chaser.src = "https://placehold.co/50x50/ff8800/ffffff?text=C";
+assets.dodger.src = "https://placehold.co/50x50/ff00ff/ffffff?text=D";
+assets.shieldPowerUp.src = "https://placehold.co/40x40/00ff00/000000?text=S";
+assets.fuelPowerUp.src = "https://placehold.co/40x40/ffffff/000000?text=F";
+
+let score = 0;
+let gameOver = false;
+let gameStarted = false;
+const keys = {};
+
+class Player {
+  constructor() {
+    this.width = 64;
+    this.height = 64;
+    this.x = canvas.width/2 - this.width/2;
+    this.y = canvas.height - this.height - 20;
+    this.speed = 7;
+    this.bullets = [];
+    this.shootCooldown = 0;
+    this.maxFuel = 100;
+    this.fuel = 100;
+    this.shieldActive = false;
+    this.shieldTimer = 0;
+  }
+
+  update() {
+    if(keys["ArrowLeft"] && this.x > 0) this.x -= this.speed;
+    if(keys["ArrowRight"] && this.x < canvas.width-this.width) this.x += this.speed;
+
+    if(keys[" "] && this.shootCooldown <= 0) {
+      this.shoot();
+      this.shootCooldown = 15;
+    }
+
+    if(this.shootCooldown > 0) this.shootCooldown--;
+
+    this.bullets.forEach((b,i)=>{
+      b.update();
+      if(b.y < 0) this.bullets.splice(i,1);
+    });
+
+    // Slower fuel drain
+    this.fuel -= 0.03;
+    if(this.fuel <= 0) gameOver = true;
+
+    if(this.shieldActive){
+      this.shieldTimer--;
+      if(this.shieldTimer <= 0) this.shieldActive = false;
+    }
+  }
+
+  draw(){
+    ctx.drawImage(assets.player,this.x,this.y,this.width,this.height);
+
+    if(this.shieldActive){
+      ctx.beginPath();
+      ctx.arc(this.x+this.width/2,this.y+this.height/2,this.width/2+10,0,Math.PI*2);
+      ctx.fillStyle="rgba(0,255,255,0.3)";
+      ctx.fill();
+      ctx.strokeStyle="cyan";
+      ctx.stroke();
+    }
+
+    this.bullets.forEach(b=>b.draw());
+  }
+
+  shoot(){ this.bullets.push(new Bullet(this.x+this.width/2,this.y)); }
+  activateShield(){ this.shieldActive=true; this.shieldTimer=300; }
+  addFuel(){ this.fuel=Math.min(this.maxFuel,this.fuel+40); }
+}
+
+class Bullet{
+  constructor(x,y){ this.width=16; this.height=16; this.x=x-8; this.y=y; this.speed=10; }
+  update(){ this.y-=this.speed; }
+  draw(){ ctx.drawImage(assets.bullet,this.x,this.y,this.width,this.height); }
+}
+
+class Competitor{
+  constructor(img,w,h,s){
+    this.image=img; this.width=w; this.height=h;
+    this.x=Math.random()*(canvas.width-w);
+    this.y=-h; this.speed=s;
+  }
+  update(){ this.y+=this.speed; }
+  draw(){ ctx.drawImage(this.image,this.x,this.y,this.width,this.height); }
+}
+
+class Asteroid extends Competitor{
+  constructor(){ super(assets.asteroid,64,64,Math.random()*2+2); }
+}
+class Chaser extends Competitor{
+  constructor(){ super(assets.chaser,50,50,2); }
+  update(){ super.update(); if(player.x>this.x) this.x+=1; else this.x-=1; }
+}
+class Dodger extends Competitor{
+  constructor(){ super(assets.dodger,50,50,4); }
+}
+
+class PowerUp{
+  constructor(img){
+    this.image=img; this.width=40; this.height=40;
+    this.x=Math.random()*(canvas.width-40);
+    this.y=-40; this.speed=2;
+  }
+  update(){ this.y+=this.speed; }
+  draw(){ ctx.drawImage(this.image,this.x,this.y,this.width,this.height); }
+}
+
+class ShieldPowerUp extends PowerUp{
+  constructor(){ super(assets.shieldPowerUp); }
+}
+class FuelPowerUp extends PowerUp{
+  constructor(){ super(assets.fuelPowerUp); }
+}
+
+let player=new Player();
+let competitors=[];
+let powerUps=[];
+let spawnTimer=100;
+let powerTimer=300; // Faster power-up spawn
+
+function resetGame(){
+  player=new Player();
+  competitors=[];
+  powerUps=[];
+  score=0;
+  gameOver=false;
+  gameStarted=true;
+  requestAnimationFrame(gameLoop);
+}
+
+function checkCollisions(){
+  player.bullets.forEach((b,bi)=>{
+    competitors.forEach((c,ci)=>{
+      if(b.x<c.x+c.width && b.x+b.width>c.x &&
+         b.y<c.y+c.height && b.y+b.height>c.y){
+           competitors.splice(ci,1);
+           player.bullets.splice(bi,1);
+           score+=10;
+      }
+    });
+  });
+
+  if(!player.shieldActive){
+    competitors.forEach(c=>{
+      if(player.x<c.x+c.width && player.x+player.width>c.x &&
+         player.y<c.y+c.height && player.y+player.height>c.y){
+           collisionSound.triggerAttackRelease("C2","8n");
+           gameOver=true;
+      }
+    });
+  }
+
+  powerUps.forEach((p,pi)=>{
+    if(player.x<p.x+p.width && player.x+player.width>p.x &&
+       player.y<p.y+p.height && player.y+player.height>p.y){
+         powerUps.splice(pi,1);
+         if(p instanceof ShieldPowerUp) player.activateShield();
+         if(p instanceof FuelPowerUp) player.addFuel();
+    }
+  });
+}
+
+function spawn(){
+  spawnTimer--;
+  if(spawnTimer<=0){
+    const r=Math.random();
+    if(r<0.6) competitors.push(new Asteroid());
+    else if(r<0.85) competitors.push(new Chaser());
+    else competitors.push(new Dodger());
+    spawnTimer=100;
+  }
+
+  powerTimer--;
+  if(powerTimer<=0){
+
+    // Adaptive fuel logic
+    let fuelChance = 0.7; // Base 70%
+    if(player.fuel < 30) fuelChance = 0.9;
+    if(player.fuel < 15) fuelChance = 1.0;
+
+    if(Math.random() < fuelChance)
+      powerUps.push(new FuelPowerUp());
+    else
+      powerUps.push(new ShieldPowerUp());
+
+    powerTimer=300;
+  }
+}
+
+function drawUI(){
+  ctx.save();
+  ctx.textAlign="left";
+  ctx.textBaseline="top";
+
+  ctx.fillStyle="white";
+  ctx.font="24px Orbitron";
+  ctx.fillText("Score: "+score,20,20);
+
+  ctx.fillStyle="#555";
+  ctx.fillRect(canvas.width-220,20,200,20);
+
+  ctx.fillStyle=player.fuel<25?"red":"lime";
+  ctx.fillRect(canvas.width-220,20,(player.fuel/player.maxFuel)*200,20);
+
+  ctx.strokeStyle="white";
+  ctx.strokeRect(canvas.width-220,20,200,20);
+
+  ctx.restore();
+}
+
+function drawStart(){
+  ctx.fillStyle="white";
+  ctx.textAlign="center";
+  ctx.font="40px Orbitron";
+  ctx.fillText("Click To Start",canvas.width/2,canvas.height/2);
+}
+
+function drawGameOver(){
+  ctx.fillStyle="rgba(0,0,0,0.7)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="red";
+  ctx.font="60px Orbitron";
+  ctx.textAlign="center";
+  ctx.fillText("GAME OVER",canvas.width/2,canvas.height/2);
+}
+
+function gameLoop(){
+  if(!gameStarted){ drawStart(); return; }
+  if(gameOver){ drawGameOver(); return; }
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  player.update();
+  competitors.forEach((c,i)=>{
+    c.update();
+    if(c.y>canvas.height) competitors.splice(i,1);
+  });
+  powerUps.forEach((p,i)=>{
+    p.update();
+    if(p.y>canvas.height) powerUps.splice(i,1);
+  });
+
+  spawn();
+  checkCollisions();
+
+  player.draw();
+  competitors.forEach(c=>c.draw());
+  powerUps.forEach(p=>p.draw());
+  drawUI();
+
+  requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener("keydown",e=>keys[e.key]=true);
+window.addEventListener("keyup",e=>keys[e.key]=false);
+
+canvas.addEventListener("click",()=>{
+  if(Tone.context.state!=="running") Tone.start();
+  if(!gameStarted||gameOver) resetGame();
+});
+
+drawStart();
+</script>
+</body>
+</html>
