@@ -85,7 +85,7 @@ class Player {
     this.height = 64;
     this.x = canvas.width/2 - this.width/2;
     this.y = canvas.height - this.height - 20;
-    this.speed = 7;
+    this.speed = 10;
     this.bullets = [];
     this.shootCooldown = 0;
     this.maxFuel = 100;
@@ -246,7 +246,7 @@ function spawn(){
   if(powerTimer<=0){
 
     // Adaptive fuel logic
-    let fuelChance = 0.7; // Base 70%
+    let fuelChance = 5.0; // Base 70%
     if(player.fuel < 30) fuelChance = 0.9;
     if(player.fuel < 15) fuelChance = 1.0;
 
