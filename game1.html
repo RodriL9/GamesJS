@@ -44,7 +44,7 @@ h1 {
 <body>
 <div id="game-container">
 <h1>Space Shooter</h1>
-<canvas id="gameCanvas" width="800" height="600"></canvas>
+<canvas id="gameCanvas" width="1200" height="900"></canvas>
 </div>
 
 <script>
@@ -56,24 +56,6 @@ const collisionSound = new Tone.Synth({
   envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.1 }
 }).toDestination();
 
-const assets = {
-  player: new Image(),
-  bullet: new Image(),
-  asteroid: new Image(),
-  chaser: new Image(),
-  dodger: new Image(),
-  shieldPowerUp: new Image(),
-  fuelPowerUp: new Image(),
-};
-
-assets.player.src = "https://placehold.co/64x64/00ffff/000000?text=P";
-assets.bullet.src = "https://placehold.co/16x16/ffff00/000000?text=!";
-assets.asteroid.src = "https://placehold.co/64x64/ff0000/ffffff?text=A";
-assets.chaser.src = "https://placehold.co/50x50/ff8800/ffffff?text=C";
-assets.dodger.src = "https://placehold.co/50x50/ff00ff/ffffff?text=D";
-assets.shieldPowerUp.src = "https://placehold.co/40x40/00ff00/000000?text=S";
-assets.fuelPowerUp.src = "https://placehold.co/40x40/ffffff/000000?text=F";
-
 let score = 0;
 let gameOver = false;
 let gameStarted = false;
@@ -84,7 +66,7 @@ class Player {
     this.width = 64;
     this.height = 64;
     this.x = canvas.width/2 - this.width/2;
-    this.y = canvas.height - this.height - 20;
+    this.y = canvas.height - this.height - 40;
     this.speed = 10;
     this.bullets = [];
     this.shootCooldown = 0;
@@ -97,6 +79,8 @@ class Player {
   update() {
     if(keys["ArrowLeft"] && this.x > 0) this.x -= this.speed;
     if(keys["ArrowRight"] && this.x < canvas.width-this.width) this.x += this.speed;
+    if(keys["ArrowUp"] && this.y > 0) this.y -= this.speed;
+    if(keys["ArrowDown"] && this.y < canvas.height-this.height) this.y += this.speed;
 
     if(keys[" "] && this.shootCooldown <= 0) {
       this.shoot();
@@ -121,7 +105,22 @@ class Player {
   }
 
   draw(){
-    ctx.drawImage(assets.player,this.x,this.y,this.width,this.height);
+    // Draw spaceship as a triangle
+    ctx.save();
+    ctx.fillStyle = "#00ffff";
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y); // Top point
+    ctx.lineTo(this.x, this.y + this.height); // Bottom left
+    ctx.lineTo(this.x + this.width, this.y + this.height); // Bottom right
+    ctx.closePath();
+    ctx.fill();
+    
+    // Add outline
+    ctx.strokeStyle = "#00ff00";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    ctx.restore();
 
     if(this.shieldActive){
       ctx.beginPath();
@@ -141,47 +140,158 @@ class Player {
 }
 
 class Bullet{
-  constructor(x,y){ this.width=16; this.height=16; this.x=x-8; this.y=y; this.speed=10; }
+  constructor(x,y){ this.width=8; this.height=16; this.x=x-4; this.y=y; this.speed=20; }
   update(){ this.y-=this.speed; }
-  draw(){ ctx.drawImage(assets.bullet,this.x,this.y,this.width,this.height); }
+  draw(){ 
+    ctx.fillStyle = "#ffff00";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    ctx.strokeStyle = "#ff00ff";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(this.x, this.y, this.width, this.height);
+  }
 }
 
 class Competitor{
-  constructor(img,w,h,s){
-    this.image=img; this.width=w; this.height=h;
+  constructor(type,w,h,s){
+    this.type=type; this.width=w; this.height=h;
     this.x=Math.random()*(canvas.width-w);
     this.y=-h; this.speed=s;
   }
   update(){ this.y+=this.speed; }
-  draw(){ ctx.drawImage(this.image,this.x,this.y,this.width,this.height); }
+  draw(){ 
+    ctx.save();
+    ctx.translate(this.x + this.width/2, this.y + this.height/2);
+    
+    if(this.type === "asteroid") {
+      // Draw jagged asteroid
+      ctx.fillStyle = "#ff6600";
+      ctx.beginPath();
+      for(let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const radius = 20 + Math.random() * 10;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        if(i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#ffaa00";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
 }
 
 class Asteroid extends Competitor{
-  constructor(){ super(assets.asteroid,64,64,Math.random()*2+2); }
+  constructor(){ super("asteroid",64,64,Math.random()*2+2); }
 }
 class Chaser extends Competitor{
-  constructor(){ super(assets.chaser,50,50,2); }
+  constructor(){ super("chaser",50,50,2); }
   update(){ super.update(); if(player.x>this.x) this.x+=1; else this.x-=1; }
+  draw(){
+    // Draw enemy ship as inverted triangle (moving down)
+    ctx.save();
+    ctx.fillStyle = "#ff8800";
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y + this.height); // Bottom point
+    ctx.lineTo(this.x, this.y); // Top left
+    ctx.lineTo(this.x + this.width, this.y); // Top right
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#ffaa00";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 class Dodger extends Competitor{
-  constructor(){ super(assets.dodger,50,50,4); }
+  constructor(){ super("dodger",50,50,4); }
+  draw(){
+    // Draw dodger as a diamond/rhombus shape
+    ctx.save();
+    ctx.fillStyle = "#ff00ff";
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y); // Top
+    ctx.lineTo(this.x + this.width, this.y + this.height/2); // Right
+    ctx.lineTo(this.x + this.width/2, this.y + this.height); // Bottom
+    ctx.lineTo(this.x, this.y + this.height/2); // Left
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#ff0099";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 class PowerUp{
-  constructor(img){
-    this.image=img; this.width=40; this.height=40;
+  constructor(type){
+    this.type=type; this.width=40; this.height=40;
     this.x=Math.random()*(canvas.width-40);
     this.y=-40; this.speed=2;
   }
   update(){ this.y+=this.speed; }
-  draw(){ ctx.drawImage(this.image,this.x,this.y,this.width,this.height); }
+  draw(){ }
 }
 
 class ShieldPowerUp extends PowerUp{
-  constructor(){ super(assets.shieldPowerUp); }
+  constructor(){ super("shield"); }
+  draw(){
+    // Draw shield as a circle with cross
+    ctx.save();
+    ctx.fillStyle = "rgba(0,255,0,0.6)";
+    ctx.beginPath();
+    ctx.arc(this.x + this.width/2, this.y + this.height/2, 20, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = "#00ff00";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    // Draw cross in the middle
+    ctx.strokeStyle = "#00ff00";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2 - 8, this.y + this.height/2);
+    ctx.lineTo(this.x + this.width/2 + 8, this.y + this.height/2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(this.x + this.width/2, this.y + this.height/2 - 8);
+    ctx.lineTo(this.x + this.width/2, this.y + this.height/2 + 8);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 class FuelPowerUp extends PowerUp{
-  constructor(){ super(assets.fuelPowerUp); }
+  constructor(){ super("fuel"); }
+  draw(){
+    // Draw fuel as a star
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    const cx = this.x + this.width/2;
+    const cy = this.y + this.height/2;
+    const spikes = 5;
+    const outerRadius = 18;
+    const innerRadius = 8;
+    
+    ctx.beginPath();
+    for(let i = 0; i < spikes * 2; i++) {
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
+      const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI/2;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      if(i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#ffff00";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 let player=new Player();
@@ -269,13 +379,13 @@ function drawUI(){
   ctx.fillText("Score: "+score,20,20);
 
   ctx.fillStyle="#555";
-  ctx.fillRect(canvas.width-220,20,200,20);
+  ctx.fillRect(canvas.width-220,20,200,30);
 
   ctx.fillStyle=player.fuel<25?"red":"lime";
-  ctx.fillRect(canvas.width-220,20,(player.fuel/player.maxFuel)*200,20);
+  ctx.fillRect(canvas.width-220,20,(player.fuel/player.maxFuel)*200,30);
 
   ctx.strokeStyle="white";
-  ctx.strokeRect(canvas.width-220,20,200,20);
+  ctx.strokeRect(canvas.width-220,20,200,30);
 
   ctx.restore();
 }
